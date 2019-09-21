@@ -11,12 +11,20 @@ namespace DependencyInjectionWorkshop.Models
 {
     public class AuthenticationService
     {
-        public bool Verify(string account, string password, string otp)
+        public bool Verify(string accountId, string password, string otp)
         {
+            var httpClient = new HttpClient() { BaseAddress = new Uri("http://joey.com/") };
+            var isLockedResponse = httpClient.PostAsJsonAsync("api/failedCounter/IsLocked", accountId).Result;
+            isLockedResponse.EnsureSuccessStatusCode();
+            if (isLockedResponse.Content.ReadAsAsync<bool>().Result)
+            {
+                throw new FailedTooManyTimesException();
+            }
+
             string passwordFromDb;
             using (var connection = new SqlConnection("my connection string"))
             {
-                passwordFromDb = connection.Query<string>("spGetUserPassword", new { Id = account },
+                passwordFromDb = connection.Query<string>("spGetUserPassword", new { Id = accountId },
                     commandType: CommandType.StoredProcedure).SingleOrDefault();
             }
 
@@ -29,28 +37,45 @@ namespace DependencyInjectionWorkshop.Models
             }
             var hashedPassword = hash.ToString();
 
-            var httpClient = new HttpClient() { BaseAddress = new Uri("http://joey.com/") };
-            var response = httpClient.PostAsJsonAsync("api/otps", account).Result;
+            var response = httpClient.PostAsJsonAsync("api/otps", accountId).Result;
             if (!response.IsSuccessStatusCode)
             {
-                throw new Exception($"web api error, account:{account}");
+                throw new Exception($"web api error, accountId:{accountId}");
             }
 
             var currentOtp = response.Content.ReadAsAsync<string>().Result;
 
             if (hashedPassword == passwordFromDb && otp == currentOtp)
             {
+                var resetResponse = httpClient.PostAsJsonAsync("api/failedCounter/Reset", accountId).Result;
+                resetResponse.EnsureSuccessStatusCode();
+
                 return true;
             }
             else
             {
-                var message = $"{account} failed to authenticate.";
+                var addFailedCountResponse = httpClient.PostAsJsonAsync("api/failedCounter/Add", accountId).Result;
+                addFailedCountResponse.EnsureSuccessStatusCode();
+
+                var failedCountResponse =
+                    httpClient.PostAsJsonAsync("api/failedCounter/GetFailedCount", accountId).Result;
+                failedCountResponse.EnsureSuccessStatusCode();
+                var failedCount = failedCountResponse.Content.ReadAsAsync<int>().Result;
+
+                var logger = NLog.LogManager.GetCurrentClassLogger();
+                logger.Info($"accountId:{accountId} failed times:{failedCount}");
+
+                var message = $"{accountId} failed to authenticate.";
                 var slackClient = new SlackClient("my api token");
                 slackClient.PostMessage(response1 => { }, "my channel", message, "my bot name");
-                return false;
 
+                return false;
             }
         }
     }
 
+    public class FailedTooManyTimesException : Exception
+    {
+
+    }
 }
