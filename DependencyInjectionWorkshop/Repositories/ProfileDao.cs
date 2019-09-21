@@ -1,15 +1,18 @@
-﻿using System;
-using System.Data;
+﻿using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
-using System.Net.Http;
 using Dapper;
 
 namespace DependencyInjectionWorkshop.Repositories
 {
-    public class ProfileDao
+    public interface IProfile
     {
-        public string GetPasswordFromDb(string accountId)
+        string GetPassword(string accountId);
+    }
+
+    public class ProfileDao : IProfile
+    {
+        public string GetPassword(string accountId)
         {
             string passwordFromDb;
             using (var connection = new SqlConnection("my connection string"))
@@ -19,14 +22,6 @@ namespace DependencyInjectionWorkshop.Repositories
             }
 
             return passwordFromDb;
-        }
-
-        public bool GetAccountIsLocked(string accountId)
-        {
-            var isLockedResponse = new HttpClient() { BaseAddress = new Uri("http://joey.com/") }.PostAsJsonAsync("api/failedCounter/IsLocked", accountId).Result;
-            isLockedResponse.EnsureSuccessStatusCode();
-            var isLocked = isLockedResponse.Content.ReadAsAsync<bool>().Result;
-            return isLocked;
         }
     }
 }
