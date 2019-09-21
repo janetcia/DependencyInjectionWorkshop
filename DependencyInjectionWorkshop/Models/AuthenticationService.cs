@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using Dapper;
+using SlackAPI;
 
 namespace DependencyInjectionWorkshop.Models
 {
@@ -21,7 +22,7 @@ namespace DependencyInjectionWorkshop.Models
 
             var crypt = new System.Security.Cryptography.SHA256Managed();
             var hash = new StringBuilder();
-            var crypto = crypt.ComputeHash(Encoding.UTF8.GetBytes(passwordFromDb));
+            var crypto = crypt.ComputeHash(Encoding.UTF8.GetBytes(password));
             foreach (var theByte in crypto)
             {
                 hash.Append(theByte.ToString("x2"));
@@ -32,12 +33,23 @@ namespace DependencyInjectionWorkshop.Models
             var response = httpClient.PostAsJsonAsync("api/otps", account).Result;
             if (!response.IsSuccessStatusCode)
             {
-                throw new Exception($"web api error, accountId:{account}");
+                throw new Exception($"web api error, account:{account}");
             }
 
             var currentOtp = response.Content.ReadAsAsync<string>().Result;
 
-            return hashedPassword == passwordFromDb && otp == currentOtp;
+            if (hashedPassword == passwordFromDb && otp == currentOtp)
+            {
+                return true;
+            }
+            else
+            {
+                var message = $"{account} failed to authenticate.";
+                var slackClient = new SlackClient("my api token");
+                slackClient.PostMessage(response1 => { }, "my channel", message, "my bot name");
+                return false;
+
+            }
         }
     }
 
